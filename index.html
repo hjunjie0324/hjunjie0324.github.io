@@ -149,6 +149,84 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="en">
+    <link itemprop="mainEntityOfPage" href="https://hjunjie0324.github.io/2021/01/09/%E5%9F%BA%E4%BA%8ESQuAD%E7%9A%84%E9%97%AE%E7%AD%94%E7%B3%BB%E7%BB%9F%EF%BC%88%E4%B8%80%EF%BC%89/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="Junjie Han">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="韩君杰的个人博客">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2021/01/09/%E5%9F%BA%E4%BA%8ESQuAD%E7%9A%84%E9%97%AE%E7%AD%94%E7%B3%BB%E7%BB%9F%EF%BC%88%E4%B8%80%EF%BC%89/" class="post-title-link" itemprop="url">基于SQuAD的问答系统（一）</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">Posted on</span>
+              
+
+              <time title="Created: 2021-01-09 13:10:54 / Modified: 08:48:54" itemprop="dateCreated datePublished" datetime="2021-01-09T13:10:54Z">2021-01-09</time>
+            </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <p>问答系统是自然语言处理一个重要的下游任务。这里我们基于SQuAD数据集构建问答系统<a target="_blank" rel="noopener" href="https://rajpurkar.github.io/SQuAD-explorer/">SQuAD</a></p>
+<p>SQuAD数据集由斯坦福发布。数据集中所有问题都是factoid question，即问题可以由长文本中的一个词或者一个短语回答。每条数据会给出一个问题和一个长文本，问答系统负责把可以作为答案的短语从长文本中找出来。所以基于SQuAD的问答系统不用考虑判断对错，计数等问题，只需要考虑factoid question，可以作为构建一个可以在现实世界中使用的问答系统非常好的起点。</p>
+<p>SQuAD最新的2.0版本相对于之前的版本加入了no answer的情况，也就是给出的长文本中没有问题的答案，这样使得问答系统必须更加真正理解问题和长文本。</p>
+<p>这篇文章我们介绍bert fine tune的方法。下一篇文章我们将会介绍bert + BiDAF的方法。<br>这篇文章的完整代码<a target="_blank" rel="noopener" href="https://github.com/hjunjie0324/SQuAD_bert_fine_tune">github</a></p>
+<h2 id="overview"><a href="#overview" class="headerlink" title="overview"></a>overview</h2><p>因为是factoid question，答案在长文本中，所以模型只需要输出答案短语在长文本中的起始位置和结束位置。因此在训练中我们把起始位置和结束位置作为label，模型的任务就是挑出最有可能作为起始位置的词以及最有可能作为结束位置的词。</p>
+<h2 id="explore-data"><a href="#explore-data" class="headerlink" title="explore data"></a>explore data</h2><p>bert每次可以处理的最长文本为512，再长就需要truncation或者将文本分批次输入给bert。<br>训练集中的长文本长度绝大部分在400以下，极少数超过了512，需要truncation</p>
+<h2 id="preprocess"><a href="#preprocess" class="headerlink" title="preprocess"></a>preprocess</h2><p>训练集只提供了答案的character start position，我们需要添加end position,并且把它们转化为token position。如果是no-answer的情况，根据bert paper,我们把start position和end position都放在起始的CLS token上。<br>之后我们用tokenizer将文本转化为可以输入bert模型的encoding。这里我们使用huggingFace的BertTokenizerFast。</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">tokenizer = BertTokenizerFast.from_pretrained(<span class="string">&#x27;bert-base-uncased&#x27;</span>)</span><br><span class="line">train_encodings = tokenizer(train_contexts, train_questions, truncation=True, padding=True)</span><br></pre></td></tr></table></figure>
+<p>输出的encoding是字典的结构，包含了input_ids和attention_mask。input_ids是每个token在bert中的id，问题和文本之间用SEP token分开。attention_mask表示该位置的token是否是padding。</p>
+<h2 id="handle-no-answer-question"><a href="#handle-no-answer-question" class="headerlink" title="handle no-answer question:"></a>handle no-answer question:</h2><p>遇到no-answer的情况，我们把start_position和end_position都设置在起始的CLS token上。预测是否为no-answer question的时候，我们把CLS token为start position和end_position的概率加起来，同时把另外非CLS的token中，start_position和end_position概率最大的加起来，将两者进行比较。可以在前者加上一个threshold。</p>
+<h2 id="model-and-train"><a href="#model-and-train" class="headerlink" title="model and train"></a>model and train</h2><p>模型我们直接采用了huggingFace的BertForQuestionAnswering。也就是bert输出的hidden state上面加了一层linear layer用来计算每个token是start position或者是end position的概率。</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">model = BertForQuestionAnswering.from_pretrained(<span class="string">&quot;bert-base-uncased&quot;</span>,return_dict=True)</span><br></pre></td></tr></table></figure>
+<p>引入SquadDataset类，继承Dataset类,将之前的train_encoding转化为SquadDataset。Dataset是pytorch提供的数据读取接口。__getitem__方法使得每一条数据都可以通过dataset[i]的方法读取</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">class SquadDataset(torch.utils.data.Dataset):</span><br><span class="line"> def __init__(self,encodings):</span><br><span class="line">   self.encodings = encodings</span><br><span class="line"> def __getitem__(self,idx):</span><br><span class="line">   <span class="built_in">return</span> &#123;key:torch.tensor(val[idx]) <span class="keyword">for</span> key, val <span class="keyword">in</span> self.encodings.items()&#125;</span><br><span class="line"> def __len__(self):</span><br><span class="line">   <span class="built_in">return</span> len(self.encodings.input_ids)</span><br><span class="line"></span><br><span class="line">train_dataset = SquadDataset(train_encodings)</span><br></pre></td></tr></table></figure>
+<p>把dataset放入dataLoader里。dataLoader主要是用来产生一个batch的数据</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">train_loader = DataLoader(small_train_dataset,batch_size=16,shuffle=True)</span><br></pre></td></tr></table></figure>
+<p>bert paper推荐设定batch size为48进行训练，但是我们没有那么大的内存空间，所以我们设置batch size为16，epoch为3，adam优化器的学习率为5e-5</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">for</span> epoch <span class="keyword">in</span> range(3):</span><br><span class="line"> <span class="keyword">for</span> batch <span class="keyword">in</span> train_loader:</span><br><span class="line">   optim.zero_grad()</span><br><span class="line">   input_ids = batch[<span class="string">&#x27;input_ids&#x27;</span>].to(device)</span><br><span class="line">   attention_mask = batch[<span class="string">&#x27;attention_mask&#x27;</span>].to(device)</span><br><span class="line">   start_positions = batch[<span class="string">&#x27;start_positions&#x27;</span>].to(device)</span><br><span class="line">   end_positions = batch[<span class="string">&#x27;end_positions&#x27;</span>].to(device)</span><br><span class="line">   outputs = model(input_ids, attention_mask=attention_mask, start_positions=start_positions,</span><br><span class="line">                   end_positions=end_positions)</span><br><span class="line">   loss = outputs[0]</span><br><span class="line">   loss.backward()</span><br><span class="line">   optim.step()</span><br></pre></td></tr></table></figure>
+<h2 id="result"><a href="#result" class="headerlink" title="result"></a>result</h2><p>在evaluation dataset上的测试结果显示: accuracy为0.61, f1 score为0.67。</p>
+<p>如果觉得这篇文章有帮助的话，扫码点个赞呗<br><img src="/images/like.jpeg" alt="avatar"></p>
+
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="en">
     <link itemprop="mainEntityOfPage" href="https://hjunjie0324.github.io/2021/01/09/real-or-not-tweets-classification/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -382,7 +460,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">2</span>
+          <span class="site-state-item-count">3</span>
           <span class="site-state-item-name">posts</span>
         </a>
       </div>
