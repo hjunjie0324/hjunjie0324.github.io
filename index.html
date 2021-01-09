@@ -97,7 +97,7 @@
     </a>
       <p class="site-subtitle" itemprop="description">blog of a NLPer</p>
       <a>
-        <img class="custom-logo-image" src="images/profile_photo.jpeg" alt="韩君杰的个人博客">
+        <img class="custom-logo-image" src="/images/profile_photo.jpeg" alt="韩君杰的个人博客">
       </a>
   </div>
 
@@ -180,7 +180,7 @@
                   <i class="far fa-calendar-check"></i>
                 </span>
                 <span class="post-meta-item-text">Edited on</span>
-                <time title="Modified: 2021-01-09 00:49:03" itemprop="dateModified" datetime="2021-01-09T00:49:03Z">2021-01-09</time>
+                <time title="Modified: 2021-01-09 01:38:03" itemprop="dateModified" datetime="2021-01-09T01:38:03Z">2021-01-09</time>
               </span>
 
           
@@ -198,8 +198,8 @@
 <p>题目看完了，有什么想法嘛？我的首先这是一个二分类的问题。比较传统的方法可以用logistic regression之类的。也可以用bert的CLS token来fine tune。</p>
 <p>排行榜上这个比赛是用F1 score进行排名。最后我的成绩是0.837,大概排在150位左右。顺便一提，排行榜上前60位的F1 score都是1，非常奇怪。讨论区有人说这是因为测试集的标签是公开的，这些人就直接上传了正确的标签进行作弊。而且他们没有人上传代码，所以我认为他们可能都是作弊的吧。</p>
 <p>本文bert fine tune部分的代码见<a target="_blank" rel="noopener" href="https://github.com/hjunjie0324/real_or_not">github</a></p>
-<h2 id="explore-data"><a href="#explore-data" class="headerlink" title="explore data"></a>explore data</h2><p>先看一下训练集的类别是否平衡。如果训练集中某一个类别的数据非常少我们可能需要data augmentation，人为提高这个类别的数据量。这里训练集中 not_real的数据有4000多条, real的数据有3000多条,类别还是比较平衡的。</p>
-<p>再看一下每条文本的长短。这个项目中文本算是比较短的 (因为大家发推特都不会太长)。最长的文本也只有30多个词。</p>
+<h2 id="explore-data"><a href="#explore-data" class="headerlink" title="explore data"></a>explore data</h2><p>先看一下训练集的类别是否平衡。如果训练集中某一个类别的数据非常少我们可能需要data augmentation，人为提高这个类别的数据量。这里训练集中 not_real的数据有4000多条, real的数据有3000多条,类别还是比较平衡的。<br><img src="/images/label_balance.png" alt="avatar"></p>
+<p>再看一下每条文本的长短。这个项目中文本算是比较短的 (因为大家发推特都不会太长)。最长的文本也只有30多个词。<br><img src="/images/num_words.png" alt="avatar"></p>
 <h2 id="baseline-countVector-ridgeRegression"><a href="#baseline-countVector-ridgeRegression" class="headerlink" title="baseline: countVector + ridgeRegression"></a>baseline: countVector + ridgeRegression</h2><p>首先试一下kaggle官方提供的baseline model.模型简单到飞起，甚至没有用词向量，而是直接用了countVectorizer</p>
 <figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">$ count_vectorizer = feature_extraction.text.CountVectorizer()</span><br><span class="line">$ train_vectors = count_vectorizer.fit_transform(train_df[<span class="string">&quot;text&quot;</span>])</span><br><span class="line">$ test_vectors = count_vectorizer.transform(test_df[<span class="string">&quot;text&quot;</span>])</span><br></pre></td></tr></table></figure>
 <p>由此我们把整个文本数据转化成了大矩阵，这个矩阵表示每条text当中每个单词出现的次数，而且这个矩阵比较稀疏。</p>
