@@ -149,6 +149,83 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="en">
+    <link itemprop="mainEntityOfPage" href="https://hjunjie0324.github.io/2021/01/10/%E5%9F%BA%E4%BA%8ESQuAD%E7%9A%84%E9%97%AE%E7%AD%94%E7%B3%BB%E7%BB%9F%EF%BC%88%E4%BA%8C%EF%BC%89/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="Junjie Han">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="韩君杰的个人博客">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2021/01/10/%E5%9F%BA%E4%BA%8ESQuAD%E7%9A%84%E9%97%AE%E7%AD%94%E7%B3%BB%E7%BB%9F%EF%BC%88%E4%BA%8C%EF%BC%89/" class="post-title-link" itemprop="url">基于SQuAD的问答系统（二）</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">Posted on</span>
+
+              <time title="Created: 2021-01-09 18:20:39" itemprop="dateCreated datePublished" datetime="2021-01-09T18:20:39Z">2021-01-09</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">Edited on</span>
+                <time title="Modified: 2021-01-10 05:22:02" itemprop="dateModified" datetime="2021-01-10T05:22:02Z">2021-01-10</time>
+              </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <p>上一篇我们写了使用bert fine tune的方法搭建问答系统。这一篇我们使用bert+BiDAF的方法，即在bert之上再加一个BiDAF模块。<br>完整代码见<a target="_blank" rel="noopener" href="https://github.com/hlnchen/BERT_with_Att_Flow">github</a></p>
+<h2 id="什么是BiDAF"><a href="#什么是BiDAF" class="headerlink" title="什么是BiDAF"></a>什么是BiDAF</h2><p>原始论文：<a target="_blank" rel="noopener" href="https://arxiv.org/abs/1611.01603">BiDAF</a><br>BiDAF是阅读理解以及问答系统领域比较重要的模型。在BiDAF之前，一个stanford attentive reader的模型比较流行，其核心就是context里的每个词和question做简单的attention。BiDAF则改进了attention部分。BiDAF paper指出之前的attention方法犯了”early summarization”的问题，使得计算attention过程中信息损失过多。所以在BiDAF模型中我们分步计算attention，对文本慢慢的进行summary,减少了信息损失。另外这个attention的计算方法是memory-less的，也就是说每一步计算只需要前一步的结果。</p>
+<h2 id="preprocess"><a href="#preprocess" class="headerlink" title="preprocess"></a>preprocess</h2><p>preprocess的大致过程跟之前的bert fine tune差不多，也是通过tokenizer得到一个encoding。但是在BiDAF模型中需要把question和context分开来。所以在encoding中每条数据的question长度需要一样，每条数据的context长度需要一样。这里我们设置question最长为62，手动对encodings中的question和context部分做padding和truncation。</p>
+<h2 id="model"><a href="#model" class="headerlink" title="model"></a>model</h2><p>原始的BiDAF论文使用了character level embedding（字母向量），但是在我们的项目中character level embedding跟bert耦合起来比较麻烦。再加之character level embedding对模型的提升不是很大，所以我们这里没有使用character level embedding。<br>下面这张图是我们模型的架构。<br><img src="/images/bidaf.png" alt="avatar"></p>
+<p>第一层当然是bert。我们用bert输出的word embedding作为question feature和context feature   </p>
+<p>接下来是attention layer<br>attention layer是BiDAF模型中最重要的一层。分步计算attention避免了early summarization的问题，减少了信息的损失。之前模型的attention一般只计算question to context的attention, 而在BiDAF模型中我们要计算question to context和context to question两个方向的attention。另外这一层的attention也不是一个简单的点乘，而是包含了需要训练的参数。具体步骤请参考BiDAF的原始论文。最后我们把获得的question-aware conetxt representation和之前bert输出的word embedding拼接起来输入给下一层。</p>
+<p>再然后是Bidirectional LSTM layer<br>这一层主要用来学习有了question attention之后，词与词之间的关系。加上Bi-LSTM layer之后模型运行的速度显著的变慢，一个GPU运行4个epoch的时间差不多要40个小时。可以考虑用transformer代替Bi-LSTM</p>
+<p>最后是prediction layer<br>这一层我们用linear layer来输出每个token的start_logit和end_logit，作为预测token是否为起始位置或者结束位置的概率。最后我们用nn.CrossEntropyLoss()来计算loss</p>
+<h2 id="train"><a href="#train" class="headerlink" title="train"></a>train</h2><p>因为机器内存的限制我们设置batch size为6。另外epoch次数为6，优化器用adam,学习率为3e-5。</p>
+<h2 id="result-and-analysis"><a href="#result-and-analysis" class="headerlink" title="result and analysis"></a>result and analysis</h2><p>在evaluation dataset的测试显示F1 score为0.72。<br>使用attention除了可以提升模型性能之外，还有一个好处就是比较容易可视化，很方便的就可以看出哪些词之间attention比较高。比如下面这张attention map<br><img src="/images/att.jpg" alt="avatar"><br>这条数据我们模型作出了正确的回答，答案是Norway。从图中可以看的Norway是attention比较大的词。</p>
+<h2 id="follow-up"><a href="#follow-up" class="headerlink" title="follow up"></a>follow up</h2><p>总的来说结果并不算特别好。可能是因为BiDAF模型本身不够强大。想要提高分数我们可以尝试其他的模型，比如SA-net。我们也可以尝试ensemble model。</p>
+<p>另一方面可以从学习策略方面进行改进。比如尝试使用curriculum learning或者anti-curriculum learning。</p>
+<p><img src="/images/like.jpeg" alt="avatar"></p>
+
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="en">
     <link itemprop="mainEntityOfPage" href="https://hjunjie0324.github.io/2021/01/09/%E5%9F%BA%E4%BA%8ESQuAD%E7%9A%84%E9%97%AE%E7%AD%94%E7%B3%BB%E7%BB%9F%EF%BC%88%E4%B8%80%EF%BC%89/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -172,10 +249,16 @@
                 <i class="far fa-calendar"></i>
               </span>
               <span class="post-meta-item-text">Posted on</span>
-              
 
-              <time title="Created: 2021-01-09 13:10:54 / Modified: 08:48:54" itemprop="dateCreated datePublished" datetime="2021-01-09T13:10:54Z">2021-01-09</time>
+              <time title="Created: 2021-01-09 13:10:54" itemprop="dateCreated datePublished" datetime="2021-01-09T13:10:54Z">2021-01-09</time>
             </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">Edited on</span>
+                <time title="Modified: 2021-01-10 00:59:22" itemprop="dateModified" datetime="2021-01-10T00:59:22Z">2021-01-10</time>
+              </span>
 
           
 
@@ -194,7 +277,7 @@
 <p>这篇文章我们介绍bert fine tune的方法。下一篇文章我们将会介绍bert + BiDAF的方法。<br>这篇文章的完整代码<a target="_blank" rel="noopener" href="https://github.com/hjunjie0324/SQuAD_bert_fine_tune">github</a></p>
 <h2 id="overview"><a href="#overview" class="headerlink" title="overview"></a>overview</h2><p>因为是factoid question，答案在长文本中，所以模型只需要输出答案短语在长文本中的起始位置和结束位置。因此在训练中我们把起始位置和结束位置作为label，模型的任务就是挑出最有可能作为起始位置的词以及最有可能作为结束位置的词。</p>
 <h2 id="explore-data"><a href="#explore-data" class="headerlink" title="explore data"></a>explore data</h2><p>bert每次可以处理的最长文本为512，再长就需要truncation或者将文本分批次输入给bert。<br>训练集中的长文本长度绝大部分在400以下，极少数超过了512，需要truncation</p>
-<h2 id="preprocess"><a href="#preprocess" class="headerlink" title="preprocess"></a>preprocess</h2><p>训练集只提供了答案的character start position，我们需要添加end position,并且把它们转化为token position。如果是no-answer的情况，根据bert paper,我们把start position和end position都放在起始的CLS token上。<br>之后我们用tokenizer将文本转化为可以输入bert模型的encoding。这里我们使用huggingFace的BertTokenizerFast。</p>
+<h2 id="preprocess"><a href="#preprocess" class="headerlink" title="preprocess"></a>preprocess</h2><p>训练集只提供了答案的character start position，我们需要添加end position,并且把它们转化为token position。如果是no-answer的情况，根据bert paper,我们把start position和end position都放在起始的CLS token上。<br>之后我们用tokenizer将文本转化为可以输入bert模型的encoding。这里我们使用huggingFace的BertTokenizerFast。把question和context一起输入tokenizer得到encodings</p>
 <figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">tokenizer = BertTokenizerFast.from_pretrained(<span class="string">&#x27;bert-base-uncased&#x27;</span>)</span><br><span class="line">train_encodings = tokenizer(train_contexts, train_questions, truncation=True, padding=True)</span><br></pre></td></tr></table></figure>
 <p>输出的encoding是字典的结构，包含了input_ids和attention_mask。input_ids是每个token在bert中的id，问题和文本之间用SEP token分开。attention_mask表示该位置的token是否是padding。</p>
 <h2 id="handle-no-answer-question"><a href="#handle-no-answer-question" class="headerlink" title="handle no-answer question:"></a>handle no-answer question:</h2><p>遇到no-answer的情况，我们把start_position和end_position都设置在起始的CLS token上。预测是否为no-answer question的时候，我们把CLS token为start position和end_position的概率加起来，同时把另外非CLS的token中，start_position和end_position概率最大的加起来，将两者进行比较。可以在前者加上一个threshold。</p>
@@ -460,7 +543,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">3</span>
+          <span class="site-state-item-count">4</span>
           <span class="site-state-item-name">posts</span>
         </a>
       </div>
